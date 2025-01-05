@@ -7,6 +7,18 @@ import java.util.Random;
 import java.util.Scanner;
 
 public class Main {
+    private enum MenuState {
+        WAITING,
+        PLAYING,
+        EXITING
+    }
+
+    private enum GameState {
+        PLAYING,
+        FINISH_WITH_ERROR,
+        FINISH_WITH_WINNING;
+    }
+
     private static String WORDS_FILE_PATH = "src/resources/words";
     private static int MAX_ERROR_COUNT = 6;
     private static List<String> words = new ArrayList<>();
@@ -19,55 +31,122 @@ public class Main {
     private static Scanner scanner = new Scanner(System.in);
     private static Random random = new Random();
 
-
     public static void main(String[] args) {
         configureWordsList();
-        startGame();
+        startMenu();
     }
 
-    public static void startGame() {
-        System.out.println("\nВыберите действие:");
-        System.out.println("Y - начать игру");
-        System.out.println("N - выйти");
-        String input = scanner.nextLine().toUpperCase();
+    public static void startMenu() {
+        MenuState menuState = MenuState.WAITING;
 
-        switch (input) {
+        do {
+            System.out.println("\nВыберите действие:");
+            System.out.println("Y - начать игру");
+            System.out.println("N - выйти");
+            String playerInput = scanner.nextLine().toUpperCase();
+            menuState = configureMenuState(playerInput);
+            handleMenuState(menuState);
+        } while (menuState != MenuState.EXITING);
+    }
+
+    public static MenuState configureMenuState(String playerInput) {
+        switch (playerInput) {
             case "Y":
+                return MenuState.PLAYING;
+            case "N":
+                return MenuState.EXITING;
+            default:
+                return MenuState.WAITING;
+        }
+    }
+
+    public static void handleMenuState(MenuState state) {
+        switch (state) {
+            case WAITING:
+                System.out.println("\nНе удалось определить действие. Попробуйте снова");
+                break;
+            case PLAYING:
                 System.out.println("\nНачинаем играть");
                 prepareGameWord();
-                preparePlayerTry();
+                startGameLoop();
                 break;
-            case "N":
-                System.out.println("Game over");
-                break;
-            default:
-                System.out.println("Не удалось определить действие");
-                startGame();
+            case EXITING:
+                System.out.println("\nВыходим из игры");
         }
     }
 
-    public static void preparePlayerTry() {
+    public static void startGameLoop() {
+        do {
+            char playerChar = chooseLetter();
+            boolean isLetter = Character.isLetter(playerChar);
+            boolean isUsedChar = usedChars.contains(String.valueOf(playerChar));
+
+            if (isLetter && !isUsedChar) {
+                usedChars.add(String.valueOf(playerChar));
+                int[] indices = getCharIndices(playerChar);
+                openHiddenLettersInWord(indices, playerChar);
+
+                if (indices.length > 0) {
+                    System.out.println("\nЕсть такая буква");
+                } else {
+                    System.out.println("\nТакой буквы нет.");
+                    userErrorCount++;
+                }
+
+                GameState gameState = configureGameState();
+                presentCurrentStateInfo();
+                handleCurrentGameState(gameState);
+
+                if (!gameState.equals(GameState.PLAYING)) {
+                    resetAll();
+                    return;
+                }
+            } else if (!isLetter) {
+                System.out.println("\nНеверный символ. Можно вводить только буквы.");
+            } else if (isUsedChar) {
+                System.out.println("\nБуква уже была введена ранее.");
+            }
+        } while (true);
+    }
+
+    public static GameState configureGameState() {
+        boolean isWordGuessed = guessedWord.equals(maskedWord.toString());
+
+        if (isWordGuessed) {
+            return GameState.FINISH_WITH_WINNING;
+        } else if (userErrorCount > 5) {
+            return GameState.FINISH_WITH_ERROR;
+        } else {
+            return GameState.PLAYING;
+        }
+    }
+
+    public static char chooseLetter() {
         System.out.println("\nВведите букву:");
         char inputChar = scanner.nextLine().toUpperCase().charAt(0);
+        return inputChar;
+    }
 
-        usedChars.add(String.valueOf(inputChar));
-
-        boolean hasCharInWord = false;
+    public static int[] getCharIndices(char playerChar) {
+        List<Integer> charInWordIndices = new ArrayList<>();
         for (int i = 0; i < guessedWord.length(); i++) {
-            if (guessedWord.charAt(i) == inputChar) {
-                maskedWord.setCharAt(i, inputChar);
-                hasCharInWord = true;
+            if (guessedWord.charAt(i) == playerChar) {
+                charInWordIndices.add(i);
             }
         }
-        if (hasCharInWord) {
-            System.out.println("\nЕсть такая буква");
-        } else {
-            System.out.println("\nТакой буквы нет.");
-            userErrorCount++;
+
+        int[] charIndices = new int[charInWordIndices.size()];
+        for (int i = 0; i < charInWordIndices.size(); i++) {
+            charIndices[i] = charInWordIndices.get(i);
         }
 
-        presentCurrentStateInfo();
-        handleCurrentGameState();
+        return charIndices;
+    }
+
+    public static void openHiddenLettersInWord(int[] indices, char playerChar) {
+        for (int i = 0; i < indices.length; i++) {
+            maskedWord.setCharAt(indices[i], playerChar);
+        }
     }
 
     public static void presentCurrentStateInfo() {
@@ -80,22 +159,18 @@ public class Main {
         System.out.println("==============================");
     }
 
-    public static void handleCurrentGameState() {
-        boolean isWordGuessed = guessedWord.equals(maskedWord.toString());
-
-        if (isWordGuessed) {
-            System.out.println("\nПоздравляем! Вы выиграли!");
-            System.out.println("Предлагаем сыграть еще раз");
-            resetAll();
-            startGame();
-        } else if (userErrorCount > 5) {
-            System.out.println("\nИгра закончена. Вы проиграли!");
-            System.out.println("Было загадано слово - " + guessedWord);
-            System.out.println("Предлагаем сыграть еще раз");
-            resetAll();
-            startGame();
-        } else {
-            preparePlayerTry();
+    public static void handleCurrentGameState(GameState gameState) {
+        switch (gameState) {
+            case PLAYING:
+                break;
+            case FINISH_WITH_WINNING:
+                System.out.println("\nПоздравляем! Вы выиграли!");
+                System.out.println("Предлагаем сыграть еще раз");
+                break;
+            case FINISH_WITH_ERROR:
+                System.out.println("\nИгра закончена. Вы проиграли!");
+                System.out.println("Было загадано слово - " + guessedWord);
+                System.out.println("Предлагаем сыграть еще раз");
         }
     }
 
@@ -123,7 +198,7 @@ public class Main {
 
             System.out.println("Загаданное слово: " + maskedWord);
         } else {
-            System.out.println("Файл пуст.");
+            System.out.println("Ошибка. Файл пуст.");
         }
     }
 
